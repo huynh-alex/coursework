@@ -1,0 +1,133 @@
+// Alex Huynh - 373698341
+
+ADDI X0, XZR, #0 // X0 = points to an array at address 0
+ADDI X1, XZR, #100 // X1 = length of array to fill
+BL fill
+BL insertion_sort // X0 = address of start of array, X1 = points to end of array
+B done
+
+fill:   
+    STUR X1, [X0, #0]       // appends X1, the value, into X0
+    ADDI X0, X0, #8         // makes X10[a] become X10[a+8]; this makes previous line work
+    SUBI X1, X1, #1         // decrements X1: 100,99,...,0
+    CBZ X1, filled          // terminates loop if X1 is 0
+    B fill
+    filled:
+        SUBI X0, X0, #800   // X0 = points to the first element in the array by resetting it to index 0
+        ADDI X1, XZR, #100  // X1 = length of the array (number of elements)
+        DUMP                // show that the array is in unsorted order
+        BR LR
+
+insertion_sort:     // X0 = address of start of array, X1 = number of elements in array
+
+    SUBI SP, SP, #8             // save LR as per callee convention
+    STUR LR, [SP, #0]
+
+    ADD X2, X1, XZR             // X2 = number of elements in array
+    LSL X2, X2, #3              // X2 = index of last element in array
+    ADDI X1, XZR, #8            // X1 = the loop index
+    insertion_sort_loop:
+        
+        SUBI SP, SP, #24        // save parameter registers as per caller convention
+        STUR X0, [SP, #0]
+        STUR X1, [SP, #8]
+        STUR X2, [SP, #16]
+        BL insert_sorted_pos    // X0 = address of start of array, X1 = loop index, X2 = index of last element in array
+        LDUR X2, [SP, #16]
+        LDUR X1, [SP, #8]
+        LDUR X0, [SP, #0]
+        ADDI SP, SP, #24        // restore parameter registers as per caller convention
+
+        ADDI X1, X1, #8         // increments the loop index
+        SUBS XZR, X1, X2        // terminates loop if loop index == index of last element in array
+        B.EQ insertion_sort_done
+        B insertion_sort_loop   // otherwise, continue the loop
+    
+    insertion_sort_done:
+        LDUR LR, [SP, #0]       // restore LR as per callee convention
+        ADDI SP, SP, #8
+        BR LR
+
+insert_sorted_pos:  // X0 = address of start of array, X1 = loop variable (index of p), X2 = index of last element in array
+    SUBI SP, SP, #8             // save LR as per callee convention
+    STUR LR, [SP, #0]
+    
+    ADD X9, X0, XZR             // X9 = address of start of array
+    ADD X10, X1, XZR            // X10 = index of p
+    ADD X1, X9, X10              // X1 = address of p
+    LDUR X1, [X1, #0]           // X1 = value at array[p]
+
+    SUBI SP, SP, #32            // save parameter and temporary registers as per caller convention
+    STUR X1, [SP, #0]
+    STUR X2, [SP, #8]
+    STUR X9, [SP, #16]
+    STUR X10, [SP, #24]
+    // Before: X0 = address of start of array, X1 = value at array[p], X2 = index of last element in array
+    BL find_sorted_pos
+    // After: X0 = index of where to insert p
+    LDUR X10, [SP, #24]          // restore parameter and temporary registers as per caller convention
+    LDUR X9, [SP, #16]          
+    LDUR X2, [SP, #8]       
+    LDUR X1, [SP, #0]
+    ADDI SP, SP, #32
+
+    ADD X11, X1, XZR            // X11 = value at array[p]
+    // setting up parameters for shift_right
+    ADD X2, X10, XZR             // X2 = original index of p
+    ADD X1, X0, XZR             // X1 = index of where to insert p
+    ADD X0, X9, XZR             // X0 = start of array address
+
+    SUBI SP, SP, #40            // save parameter and temporary registers are per caller convention
+    STUR X1, [SP, #0]       
+    STUR X2, [SP, #8]
+    STUR X9, [SP, #16]
+    STUR X10, [SP, #24]   
+    STUR X11, [SP, #32]   
+
+    BL shift_right              // X0 = start array address, X1 = index of where to insert p, X2 = original index of p
+    LDUR X11, [SP, #32]         // restore parameter and temporary registers as per caller convention
+    LDUR X10, [SP, #24]
+    LDUR X9, [SP, #16]
+    LDUR X2, [SP, #8]
+    LDUR X1, [SP, #0]
+    ADDI SP, SP, #40
+
+    ADD X9, X9, X1              // X9 = address of where to insert p
+    STUR X11, [X9, #0]          // addr[p] = v
+    LDUR LR, [SP, #0]           // restore LR as per callee convention
+    ADDI SP, SP, #8
+    BR LR
+
+find_sorted_pos:    // X0 = address of start of array, X1 = value of p, X2 = index of the last element in array   
+    ADD X9, XZR, XZR                // X9 = index of the sorted position; the return value
+    ADD X2, X0, X2                  // X2 is now the address of the last element in the array
+    find_sorted_pos_loop:           
+        LDUR X10, [X0, #0]          // X11 = value at array[i]
+    	SUBS XZR, X1, X10           // checks if X1 <= X10. if it is, then we found the sorted position
+        B.LE found_sorted_pos
+		SUBS XZR, X0, X2            // if address of X0 is the address of the last element in the array, we must terminate the loop
+		B.EQ found_sorted_pos
+		ADDI X0, X0, #8             // check the next index in the array
+        ADDI X9, X9, #8             // also increase the index
+        B find_sorted_pos_loop
+    found_sorted_pos:
+        ADD X0, X9, XZR             // set the index of the sorted position (X9) as the return address (X0)
+    	BR LR
+
+shift_right:        // X0 = address of start of array, X1 = index of where to insert p [pos], X2 = points to original index of p [final]
+    ADD X9, X0, X1                  // X9 = address of array[pos]
+    ADD X0, X0, X2                  // X0 = points to index p = array[final]
+    shift_right_loop:
+        SUBI X0, X0, #8
+        LDUR X10, [X0, #0]          // X10 = value of array[i-1]
+        ADDI X0, X0, #8
+        STUR X10, [X0, #0]          // array[i] = array[i-1], which is equivalent to array[i+1] = array[i]
+        SUBI X0, X0, #8             // decrement loop index
+        SUBS XZR, X0, X9            // check loop condition
+        B.EQ shift_right_done
+        B shift_right_loop
+    shift_right_done:
+        BR LR
+
+done:
+    DUMP            //show that the array is in sorted order
